@@ -9,6 +9,9 @@ firmware already implements the actions this tool maps:
                      next bonded one (falls back to the previous host on
                      timeout, see ydkb.io/help ble-series/device-switching)
     0xF00B  BT_USB   toggle output between USB and Bluetooth
+    0xFD0B  BT_POWER turn the Bluetooth function on; with LCtrl held, turn it
+                     off. Stored in EEPROM, applied by restarting the keyboard
+                     (same as the LShift+RShift+W / +LCtrl+W shortcuts)
 
 This does what https://ydkb.io does in the browser: keep the code, rewrite
 the keymap, then fix the image checksum so the bootloader accepts it.
@@ -39,6 +42,7 @@ CHECKSUM_VALUE = 0x2167
 TRNS = 0x0001
 BT_NEXT = 0xF50B
 BT_USB = 0xF00B
+BT_POWER = 0xFD0B
 
 # Unimap slot of every key on the KBD67 Lite (from ydkb.io layout-yd67ble.html).
 KEYS = {
@@ -62,6 +66,7 @@ SLOT_NAME = {v: k for k, v in KEYS.items()}
 YDKB_FN = {
     0xF00B: "BT/USB toggle", 0xF20B: "BT hide", 0xF30B: "BT discoverable",
     0xF40B: "BT clear bonds", 0xF50B: "BT next host", 0xFB0B: "battery %",
+    0xFD0B: "BT on (LCtrl: BT off)",
     0xFC0B: "Lock Mode", 0xF002: "Reset/flash", 0xF003: "Win Lock",
     0xF001: "Alt+F4", 0xF004: "Space2", 0xF300: "Esc/~`", 0xF200: "Esc/~`(L)",
     0xF100: "Esc/~`(R)", 0xF700: "Esc/~` (tricky)",
@@ -174,9 +179,13 @@ def cmd_build(args):
         origin = "ydkb.io default keymap"
 
     layer = fn_layer(km)
-    wanted = {KEYS[args.next_key]: BT_NEXT}
-    if args.mode_key:
-        wanted[KEYS[args.mode_key]] = BT_USB
+    wanted = {}
+    for key, code in ((args.next_key, BT_NEXT), (args.mode_key, BT_USB), (args.power_key, BT_POWER)):
+        if not key:
+            continue
+        if KEYS[key] in wanted:
+            sys.exit(f"Fn+{key} is assigned to two actions; pick different keys.")
+        wanted[KEYS[key]] = code
     for slot, code in wanted.items():
         cur = km[layer][slot]
         if cur not in (TRNS, code) and not args.force:
@@ -219,6 +228,9 @@ def main():
                    help="Fn + this key = switch to next Bluetooth host (default: TAB)")
     b.add_argument("--mode-key", default="CAPS", choices=sorted(KEYS) + [""],
                    help="Fn + this key = toggle USB/Bluetooth output (default: CAPS, '' to skip)")
+    b.add_argument("--power-key", default="T", choices=sorted(KEYS) + [""],
+                   help="Fn + this key = Bluetooth on, LCtrl + Fn + this key = Bluetooth off "
+                        "(default: T, '' to skip)")
     b.add_argument("--force", action="store_true", help="overwrite keys already bound on the Fn layer")
     b.add_argument("-o", "--output", default=str(HERE / "build" / "YD67BLE.BIN"))
     b.set_defaults(func=cmd_build)

@@ -1,17 +1,19 @@
-# YD67BLE Bluetooth host switching
+# YD67BLE Bluetooth keys
 
-Add one-key Bluetooth host switching to the **KBDFans KBD67 Lite** fitted with
-**YDKB's YD67BLE** dual-mode (USB + Bluetooth) PCB.
+Add Bluetooth control keys to the **KBDFans KBD67 Lite** fitted with **YDKB's
+YD67BLE** dual-mode (USB + Bluetooth) PCB: one-key host switching and a
+Bluetooth on/off switch.
 
-The stock YDKB firmware can already switch between paired Bluetooth hosts, but the
-default keymap doesn't bind that action to any key. This repo rebuilds your
-firmware image with it bound. It changes only the keymap; the firmware code is
-left as it is.
+The stock YDKB firmware already implements these actions, but the default keymap
+doesn't bind them to any key. This repo rebuilds your firmware image with them bound.
+It changes only the keymap; the firmware code is left as it is.
 
 | Keys | Action |
 | --- | --- |
 | `Fn` + `Tab` | Switch to the next paired Bluetooth host |
 | `Fn` + `Caps Lock` | Toggle output between USB and Bluetooth |
+| `Fn` + `T` | Turn Bluetooth **on**. The keyboard restarts. |
+| `LCtrl` + `Fn` + `T` | Turn Bluetooth **off**. The keyboard restarts. |
 
 `Fn` is the key just left of the arrow keys (tap = Menu, hold = Fn layer).
 Every other key keeps its current function.
@@ -58,8 +60,8 @@ cd <this repo>
    The Caps LED blinks continuously and a disk named `YD67BLE` appears.
 2. Copy the keyboard's current firmware into `backups/` and check that it was read
    correctly.
-3. Build `build/YD67BLE.BIN` from **your current firmware and keymap**, plus the two
-   keys above. It refuses to overwrite an `Fn` combination you already use.
+3. Build `build/YD67BLE.BIN` from **your current firmware and keymap**, plus the keys
+   above. It refuses to overwrite an `Fn` combination you already use.
 4. Ask for confirmation, then write the image with `sudo dd ... seek=4`. This is
    [YDKB's documented Linux method](https://ydkb.io/help/#/en/bootloader/msd-bootloader).
    It's the only step that needs root.
@@ -73,6 +75,28 @@ press `Esc`.
 | --- | --- |
 | `--upgrade` | Use the bundled newest official firmware code (`DO6M`, 2024-06-22) instead of keeping your current version. It includes macOS sleep/wake fixes and makes USB 6KRO by default ([changelog](https://ydkb.io/help/#/changelog/yd67ble)). |
 | `--default` | Start from the ydkb.io default keymap instead of your current one. |
+
+## Turning Bluetooth off
+
+Out of the box, the keyboard turns Bluetooth on whenever it runs on battery.
+`LCtrl` + `Fn` + `T` disables the Bluetooth function entirely. The setting is saved
+in the keyboard's EEPROM, so it survives restarts and battery power-offs.
+
+With Bluetooth off:
+
+- Over USB, the keyboard works normally, but the firmware doesn't start the Bluetooth
+  module, so no host can find or connect to it.
+- On battery, without a cable, the keyboard doesn't start.
+- `LShift` + `RShift` + `S` no longer shows a connection status.
+
+To turn Bluetooth back on, plug in the USB cable and press `Fn` + `T`. YDKB's docs
+say pressing `F` + `J` together also works on battery for some of their boards.
+Turning Bluetooth off doesn't clear your pairings.
+
+`LShift` + `RShift` + `W` (on) and `LShift` + `RShift` + `LCtrl` + `W` (off) do the
+same thing without the keymap change. For short breaks, Lock Mode (`Fn` + `Z`) is
+usually the better choice. It puts the keyboard into deep sleep until you press
+`F` + `J` together.
 
 ## Pairing two hosts
 
@@ -102,9 +126,10 @@ Tips:
 ## Choosing different keys
 
 ```sh
+
 python3 yd67ble.py build --keymap-from backups/<backup>.BIN --base backups/<backup>.BIN \
-    --next-key T --mode-key ""      # Fn+T switches hosts, no USB/BT key
-python3 yd67ble.py info build/YD67BLE.BIN   # show the resulting Fn layer
+    --next-key 1 --power-key 0 --mode-key ""   # Fn+1 hosts, Fn+0 BT on/off, no USB/BT key
+python3 yd67ble.py info build/YD67BLE.BIN     # show the resulting Fn layer
 ```
 
 Run `python3 yd67ble.py build --help` to see every key name. Then flash
@@ -148,7 +173,13 @@ Run `python3 yd67ble.py build --help` to see every key name. Then flash
 
 - The keymap is at `0x6000`–`0x67FF` of the 26 KiB application image: 8 layers × 128
   16-bit TMK action codes, indexed by unimap position.
-- `0xF50B` is YDKB's "next Bluetooth host" action and `0xF00B` is "USB/Bluetooth toggle".
+- `0xF50B` is YDKB's "next Bluetooth host" action, `0xF00B` is "USB/Bluetooth toggle"
+  and `0xFD0B` is "Bluetooth function on (off with `LCtrl`)".
+- ydkb.io doesn't offer `0xFD0B` for the YD67BLE, though it does for other YDKB
+  Bluetooth boards. The disassembled `DMBT` and `DO6M` firmware handle it on this board
+  the same way as the `LShift` + `RShift` + `W` shortcut. The firmware writes `0x01` (on)
+  or `0xBD` (off) to EEPROM address `0x20`, then restarts. At boot, `0xBD` keeps the
+  Bluetooth module disabled.
 - The word at `0x6700` is adjusted so that the 16-bit word sum of the image equals
   `0x2167` (the USB PID). The bootloader checks this, and `yd67ble.py check` uses it
   to verify backups.
